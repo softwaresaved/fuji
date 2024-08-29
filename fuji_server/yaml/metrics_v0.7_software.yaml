@@ -356,6 +356,7 @@ metrics:
       required:
         dependency_file:
         - requirements.txt
+        - pyproject.toml
     - target: https://f-uji.net/vocab/metadata/standards
       modality: all
       required:
@@ -367,7 +368,7 @@ metrics:
         - deploy
   created_by: FAIR4RS
   date_created: 2024-01-18
-  date_updated: 2024-01-18
+  date_updated: 2024-08-28
   version: 0.1
   total_score: 2
 - metric_identifier: FRSM-14-R1

@@ -58,7 +58,7 @@ class FAIREvaluatorRequirements(FAIREvaluator):
             )
         for d in values:
             if isinstance(d, bytes):
-                d = d.decode("utf-8")
+                d = d.decode("utf-8", errors="replace")
             if isinstance(d, str):
                 if key in d.lower():
                     return True
@@ -88,13 +88,17 @@ class FAIREvaluatorRequirements(FAIREvaluator):
                 content = self.fuji.github_data.get(location)
                 if content is not None:
                     if isinstance(content, bytes):
-                        content = content.decode("utf-8")
+                        content = content.decode("utf-8", errors="replace")
                     if isinstance(content, str):
                         if k in content.lower():
                             hit_dict[k] = True  # found keyword in location
-                            keys_to_check.remove(k)  # stop looking, have found something for this key
                     else:
                         hit_dict[k] = self.nestedDataContainsKeyword(content, k)
+                if hit_dict[k] is True:
+                    keys_to_check.remove(k)  # Need to also stop looking
+                    self.logger.info(
+                        f"{self.metric_identifier} : Found {k} in {location}"
+                    )  # Info message for specific keys
         return hit_dict
 
     def testInstructions(self):
