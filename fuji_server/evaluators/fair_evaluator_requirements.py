@@ -97,7 +97,7 @@ class FAIREvaluatorRequirements(FAIREvaluator):
                 if hit_dict[k] is True:
                     keys_to_check.remove(k)  # Need to also stop looking
                     self.logger.info(
-                        f"{self.metric_identifier} : Found {k} in {location}"
+                        f"{self.metric_identifier} : Found {k} in {location}."
                     )  # Info message for specific keys
         return hit_dict
 
