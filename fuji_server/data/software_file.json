@@ -24,7 +24,8 @@
     ],
     "parse": "file_name",
     "pattern": [
-      "requirements\\.txt"
+      "requirements\\.txt",
+      "pyproject\\.toml"
     ]
   },
   "docs_directory": {
