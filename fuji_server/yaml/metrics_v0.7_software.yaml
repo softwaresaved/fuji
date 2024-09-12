@@ -188,6 +188,13 @@ metrics:
     metric_test_name: Does the software include an identifier in the README or citation file?
     metric_test_score: 1
     metric_test_maturity: 1
+    metric_test_requirements:
+      - target: https://f-uji.net/vocab/metadata/standards
+        modality: any
+        required:
+          location:
+            - README
+            - CITATION
   - metric_test_identifier: FRSM-07-F3-2
     metric_test_name: Does the identifier resolve to the same instance of the software?
     metric_test_score: 1

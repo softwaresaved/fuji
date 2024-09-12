@@ -65,5 +65,14 @@
     "pattern": [
       "pom\\.xml"
     ]
+  },
+  "CITATION": {
+    "category": [
+      "citation"
+    ],
+    "parse": "full",
+    "pattern": [
+      "CITATION\\.cff"
+    ]
   }
 }

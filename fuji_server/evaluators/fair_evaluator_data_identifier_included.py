@@ -3,9 +3,15 @@
 # SPDX-License-Identifier: MIT
 
 import enum
+import json
 import socket
+import re
+
+import yaml
 
 from fuji_server.evaluators.fair_evaluator import FAIREvaluator
+from fuji_server.harvester.metadata_harvester import MetadataHarvester
+from fuji_server.helper.identifier_helper import IdentifierHelper
 from fuji_server.models.identifier_included import IdentifierIncluded
 from fuji_server.models.identifier_included_output import IdentifierIncludedOutput
 from fuji_server.models.identifier_included_output_inner import IdentifierIncludedOutputInner
@@ -29,12 +35,14 @@ class FAIREvaluatorDataIdentifierIncluded(FAIREvaluator):
         self.set_metric(["FsF-F3-01M", "FRSM-07-F3"])
         self.content_list = []
 
+        self.metadata_found = {}
+
         self.metric_test_map = {  # overall map
             "testDataSizeTypeNameAvailable": ["FsF-F3-01M-1"],
             "testDataUrlOrPIDAvailable": ["FsF-F3-01M-2", "FRSM-07-F3-1"],
             "testResolvesSameContent": ["FRSM-07-F3-2"],
-            "testZenodoDoiInReadme": ["FRSM-07-F3-CESSDA-1"],
-            "testZenodoDoiInCitationFile": ["FRSM-07-F3-CESSDA-2"],
+            "testZenodoDoiInReadme": ["FRSM-07-F3-1"],
+            "testZenodoDoiInCitationFile": ["FRSM-07-F3-1"],
         }
 
     def testDataSizeTypeNameAvailable(self, datainfolist):
@@ -126,7 +134,42 @@ class FAIREvaluatorDataIdentifierIncluded(FAIREvaluator):
                 test_defined = True
                 break
         if test_defined:
-            self.logger.warning(f"{self.metric_identifier} : Test for Zenodo DOI in README is not implemented.")
+            test_score = self.getTestConfigScore(test_id)
+            test_requirements = self.metric_tests[test_id].metric_test_requirements[0]
+
+            required_locations = test_requirements["required"]["location"]
+
+            self.logger.info(
+                f"{self.metric_identifier} : Looking for zenodo DOI url in {required_locations[0]} ({test_id})."
+            )
+
+            doi_regex = r"\[!\[DOI\]\(https://[^\)]+\)\]\((https://[^\)]+)\)"
+
+            readme = self.fuji.github_data.get(required_locations[0])
+
+            if readme is not None:
+                readme_raw = readme[0]["content"].decode("utf-8")
+                doi_matches = re.findall(doi_regex, readme_raw)
+
+                if len(doi_matches) > 0:
+                    self.logger.info(
+                        f"{self.metric_identifier} : Found zenodo DOI url {doi_matches} in {required_locations[0]} ({test_id}).",
+                    )
+                    id_helper = IdentifierHelper(doi_matches[0])
+
+                    resolved_url = id_helper.get_identifier_info(self.fuji.pid_collector)["resolved_url"]
+                    if resolved_url is not None:
+                        self.logger.log(
+                            self.fuji.LOG_SUCCESS,
+                            f"{self.metric_identifier} : Found resolved zenodo DOI url: {resolved_url} in {required_locations[0]}  ({test_id})."
+                        )
+                        test_status = True
+                        self.maturity = max(self.getTestConfigMaturity(test_id), self.maturity)
+                        self.setEvaluationCriteriumScore(test_id, test_score, "pass")
+                        self.score.earned += test_score
+                else:
+                    self.logger.warning(f"{self.metric_identifier} : No DOI matches in README found.")
+
         return test_status
 
     def testZenodoDoiInCitationFile(self):
@@ -143,7 +186,34 @@ class FAIREvaluatorDataIdentifierIncluded(FAIREvaluator):
                 test_defined = True
                 break
         if test_defined:
-            self.logger.warning(f"{self.metric_identifier} : Test for Zenodo DOI in CITATION file is not implemented.")
+            test_score = self.getTestConfigScore(test_id)
+            test_requirements = self.metric_tests[test_id].metric_test_requirements[0]
+            required_locations = test_requirements["required"]["location"]
+
+            self.logger.info(
+                f"{self.metric_identifier} : Looking for zenodo DOI url in {required_locations[1]} ({test_id})."
+            )
+
+            citation = self.fuji.github_data.get(required_locations[1])
+
+            if citation is not None:
+                citation_lines = citation[0]["content"].splitlines()
+                for line in citation_lines:
+                    if "zenodo" in line.decode("utf-8"):
+                        doi = line.decode("utf-8").split(":")[1].strip()
+                        if doi.startswith("10.5281/zenodo."):
+                            zenodo_url = "https://zenodo.org/records/" + doi.split("zenodo.")[1]
+                            self.logger.log(
+                                    self.fuji.LOG_SUCCESS,
+                                    f"{self.metric_identifier} : Found zenodo DOI url: {zenodo_url} in {required_locations[1]} ({test_id})."
+                                )
+                            test_status = True
+                            self.maturity = max(self.getTestConfigMaturity(test_id), self.maturity)
+                            self.setEvaluationCriteriumScore(test_id, test_score, "pass")
+                            self.score.earned += test_score
+                        else:
+                            self.logger.warning(f"{self.metric_identifier} : Zenodo DOI in CITATION.cff is in wrong format.")
+
         return test_status
 
     def evaluate(self):
@@ -154,13 +224,12 @@ class FAIREvaluatorDataIdentifierIncluded(FAIREvaluator):
         )
         self.output = IdentifierIncludedOutput()
 
-        # id_object = self.fuji.metadata_merged.get('object_identifier')
-        # self.output.object_identifier_included = id_object
         contents = self.fuji.metadata_merged.get("object_content_identifier")
+
         # if id_object is not None:
-        #    self.logger.info('FsF-F3-01M : Object identifier specified -: {}'.format(id_object))
+        #   self.logger.info('FsF-F3-01M : Object identifier specified -: {}'.format(id_object))
         if contents:
-            # print(contents)
+
             if isinstance(contents, dict):
                 contents = [contents]
             # ignore empty?
@@ -168,7 +237,7 @@ class FAIREvaluatorDataIdentifierIncluded(FAIREvaluator):
             # keep unique only -
             # contents = list({cv['url']:cv for cv in contents}.values())
             # print(contents)
-            number_of_contents = len(contents)
+            # number_of_contents = len(contents)
             """if number_of_contents >= self.fuji.FILES_LIMIT:
                 self.logger.info(
                     self.metric_identifier
@@ -182,19 +251,21 @@ class FAIREvaluatorDataIdentifierIncluded(FAIREvaluator):
                 self.result.test_status = "pass"
             if self.testDataUrlOrPIDAvailable(contents):
                 self.result.test_status = "pass"
+        else:
+            self.logger.warning('No contents available')
 
-        if self.testResolvesSameContent():
-            self.result.test_status = "pass"
+        # if self.testResolvesSameContent():
+        #    self.result.test_status = "pass"
         if self.testZenodoDoiInReadme():
             self.result.test_status = "pass"
         if self.testZenodoDoiInCitationFile():
             self.result.test_status = "pass"
 
-        if self.result.test_status == "pass":
-            self.logger.log(
-                self.fuji.LOG_SUCCESS,
-                self.metric_identifier + f" : Number of object content identifier found -: {number_of_contents}",
-            )
+        # if self.result.test_status == "pass":
+            # self.logger.log(
+            #     self.fuji.LOG_SUCCESS,
+            #     self.metric_identifier + f" : Number of object content identifier found -: {number_of_contents}",
+            # )
         else:
             self.logger.warning(self.metric_identifier + " : Valid data (content) identifier missing.")
 
