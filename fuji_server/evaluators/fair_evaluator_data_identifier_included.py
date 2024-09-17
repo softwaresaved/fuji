@@ -6,11 +6,11 @@ import enum
 import json
 import socket
 import re
+import urllib.parse
 
-import yaml
+import requests
 
 from fuji_server.evaluators.fair_evaluator import FAIREvaluator
-from fuji_server.harvester.metadata_harvester import MetadataHarvester
 from fuji_server.helper.identifier_helper import IdentifierHelper
 from fuji_server.models.identifier_included import IdentifierIncluded
 from fuji_server.models.identifier_included_output import IdentifierIncludedOutput
@@ -34,6 +34,7 @@ class FAIREvaluatorDataIdentifierIncluded(FAIREvaluator):
         FAIREvaluator.__init__(self, fuji_instance)
         self.set_metric(["FsF-F3-01M", "FRSM-07-F3"])
         self.content_list = []
+        self.resolved_urls = []
 
         self.metadata_found = {}
 
@@ -103,9 +104,8 @@ class FAIREvaluatorDataIdentifierIncluded(FAIREvaluator):
                 self.score.earned += test_score
         return test_result
 
-    def testResolvesSameContent(self):
-        """Does the identifier resolve to the same instance of the software?
-
+    def compareResolvedUrlIdentifiers(self):
+        """Check if the found related_identifiers from README or CITATION file resolve to the same instance of the software.
         Returns:
             bool: True if the test was defined and passed. False otherwise.
         """
@@ -117,8 +117,103 @@ class FAIREvaluatorDataIdentifierIncluded(FAIREvaluator):
                 test_defined = True
                 break
         if test_defined:
-            self.logger.warning(f"{self.metric_identifier} : Test for identifier resolve target is not implemented.")
+            test_score = self.getTestConfigScore(test_id)
+
+        if len(self.resolved_urls) == 2:
+            self.logger.log(
+                self.fuji.LOG_SUCCESS,
+                f"{self.metric_identifier} : Both found DOIs resolve to the same instance: README: {self.resolved_urls[0]} , CITATION: {self.resolved_urls[1]}."
+            )
+            test_status = True
+            self.maturity = max(self.getTestConfigMaturity(test_id), self.maturity)
+            self.setEvaluationCriteriumScore(test_id, test_score, "pass")
+            self.score.earned += test_score
+        elif len(self.resolved_urls) == 1:
+            self.logger.warning(
+                f"{self.metric_identifier} : Only one of the found DOIs in README and CITATION resolves back to the same instance.")
+            test_status = True
+            self.maturity = max(self.getTestConfigMaturity(test_id), self.maturity)
+            self.setEvaluationCriteriumScore(test_id, test_score, "pass")
+            self.score.earned += 1
+        else:
+            self.logger.warning(
+                f"{self.metric_identifier} : None of the found DOIs resolve back to the same instance.")
+
         return test_status
+
+    def testResolvesSameContent(self, location, pid_url):
+        """Check if the given DOI resolves to the same instance of the software"""
+        landing_url = self.fuji.landing_url
+        # Test if the identifier resolves to the landing page
+        if landing_url == pid_url:
+            self.logger.log(
+                self.fuji.LOG_SUCCESS,
+                f"{self.metric_identifier} : DOI ({pid_url}) from {location} resolves back to Landing page {landing_url}."
+            )
+            self.resolved_urls.append(pid_url)
+
+        else:
+            # Test if the identifier resolves to the same instance
+            resolved_github_link = self.resolveRelatedIdentifiersFromDoi(pid_url)
+            if resolved_github_link:
+                # The found GitHub link in DOI metadata resolves back to landing page
+                self.logger.log(
+                    self.fuji.LOG_SUCCESS,
+                    f"{self.metric_identifier} : GitHub link ({resolved_github_link}) from {location} resolves back to landing page ({landing_url})."
+                )
+                self.resolved_urls.append(resolved_github_link)
+            else:
+                self.logger.warning(
+                    f"{self.metric_identifier} : Resolved DOI from {location} does not resolve to the same instance as the landing page ({landing_url}).")
+
+    def resolveRelatedIdentifiersFromDoi(self, doi_url):
+        """Check if zenodo metadata from given DOI contains related_identifiers with GitHub link.
+
+        Returns:
+           string : GitHub url identifier when the zenodo metadata from given DOI contains it
+        """
+        parsed_pid_url = urllib.parse.urlparse(doi_url)
+        zenodo_api_url = f"https://zenodo.org/api/records/{parsed_pid_url.path.split('/')[-1]}"
+        self.logger.info(
+            f"{self.metric_identifier} : Accessing the zenodo api with following url: {zenodo_api_url} ."
+        )
+
+        zenodo_api_response = requests.get(zenodo_api_url)
+        if zenodo_api_response.status_code == 200:
+            self.logger.info(
+                f"{self.metric_identifier} : Got zenodo api data from given request url: {zenodo_api_url} ."
+            )
+        elif zenodo_api_response.status_code == 404:
+            self.logger.warning(f"{self.metric_identifier} : ERROR 404: No DOI matches in zenodo api found with given request url: {zenodo_api_url} .")
+
+        zenodo_data = json.loads(zenodo_api_response.content)
+
+        if "related_identifiers" in zenodo_data["metadata"]:
+            related_identifiers = zenodo_data["metadata"]["related_identifiers"]
+            self.logger.info(
+                f"{self.metric_identifier} : Found related_identifiers in zenodo metadata: {related_identifiers} ."
+            )
+
+            for identifier in related_identifiers:
+                found_identifier = identifier["identifier"]
+
+                github_regex = r"(https?://github.com/([^\s/]+)/([^\s/]+))"
+                github_link_match = re.search(github_regex, found_identifier)
+                github_link = github_link_match.group(1)
+
+                if github_link:
+                    self.logger.info(
+                        f"{self.metric_identifier} : Found GitHub link in zenodo metadata: {github_link} ."
+                    )
+                    landing_url = self.fuji.landing_url
+                    if github_link == landing_url:
+                        return github_link
+                else:
+                    self.logger.warning(
+                        f"{self.metric_identifier} : No GitHub link found in related_identifiers.")
+        else:
+            self.logger.warning(
+                f"{self.metric_identifier} : No related_identifiers in zenodo metadata found with given DOI: {doi_url}.")
 
     def testZenodoDoiInReadme(self):
         """The README file includes the DOI that represents all versions in Zenodo.
@@ -137,23 +232,23 @@ class FAIREvaluatorDataIdentifierIncluded(FAIREvaluator):
             test_score = self.getTestConfigScore(test_id)
             test_requirements = self.metric_tests[test_id].metric_test_requirements[0]
 
-            required_locations = test_requirements["required"]["location"]
+            readme_raw = test_requirements["required"]["location"]
 
             self.logger.info(
-                f"{self.metric_identifier} : Looking for zenodo DOI url in {required_locations[0]} ({test_id})."
+                f"{self.metric_identifier} : Looking for zenodo DOI url in {readme_raw[0]} ({test_id})."
             )
 
             doi_regex = r"\[!\[DOI\]\(https://[^\)]+\)\]\((https://[^\)]+)\)"
 
-            readme = self.fuji.github_data.get(required_locations[0])
+            readme = self.fuji.github_data.get(readme_raw[0])
 
             if readme is not None:
-                readme_raw = readme[0]["content"].decode("utf-8")
-                doi_matches = re.findall(doi_regex, readme_raw)
+                readme_raw_decoded = readme[0]["content"].decode("utf-8")
+                doi_matches = re.findall(doi_regex, readme_raw_decoded)
 
                 if len(doi_matches) > 0:
                     self.logger.info(
-                        f"{self.metric_identifier} : Found zenodo DOI url {doi_matches} in {required_locations[0]} ({test_id}).",
+                        f"{self.metric_identifier} : Found zenodo DOI url {doi_matches} in {readme_raw[0]} ({test_id}).",
                     )
                     id_helper = IdentifierHelper(doi_matches[0])
 
@@ -161,12 +256,14 @@ class FAIREvaluatorDataIdentifierIncluded(FAIREvaluator):
                     if resolved_url is not None:
                         self.logger.log(
                             self.fuji.LOG_SUCCESS,
-                            f"{self.metric_identifier} : Found resolved zenodo DOI url: {resolved_url} in {required_locations[0]}  ({test_id})."
+                            f"{self.metric_identifier} : Found resolved zenodo DOI url: {resolved_url} in {readme_raw[0]}  ({test_id})."
                         )
+                        self.testResolvesSameContent(readme_raw[0], resolved_url)
                         test_status = True
                         self.maturity = max(self.getTestConfigMaturity(test_id), self.maturity)
                         self.setEvaluationCriteriumScore(test_id, test_score, "pass")
-                        self.score.earned += test_score
+                        self.score.earned += 1
+                        self.content_list.append(resolved_url)
                 else:
                     self.logger.warning(f"{self.metric_identifier} : No DOI matches in README found.")
 
@@ -188,13 +285,13 @@ class FAIREvaluatorDataIdentifierIncluded(FAIREvaluator):
         if test_defined:
             test_score = self.getTestConfigScore(test_id)
             test_requirements = self.metric_tests[test_id].metric_test_requirements[0]
-            required_locations = test_requirements["required"]["location"]
+            citation_raw = test_requirements["required"]["location"]
 
             self.logger.info(
-                f"{self.metric_identifier} : Looking for zenodo DOI url in {required_locations[1]} ({test_id})."
+                f"{self.metric_identifier} : Looking for zenodo DOI url in {citation_raw[1]} ({test_id})."
             )
 
-            citation = self.fuji.github_data.get(required_locations[1])
+            citation = self.fuji.github_data.get(citation_raw[1])
 
             if citation is not None:
                 citation_lines = citation[0]["content"].splitlines()
@@ -204,15 +301,18 @@ class FAIREvaluatorDataIdentifierIncluded(FAIREvaluator):
                         if doi.startswith("10.5281/zenodo."):
                             zenodo_url = "https://zenodo.org/records/" + doi.split("zenodo.")[1]
                             self.logger.log(
-                                    self.fuji.LOG_SUCCESS,
-                                    f"{self.metric_identifier} : Found zenodo DOI url: {zenodo_url} in {required_locations[1]} ({test_id})."
-                                )
+                                self.fuji.LOG_SUCCESS,
+                                f"{self.metric_identifier} : Found zenodo DOI url: {zenodo_url} in {citation_raw[1]} ({test_id})."
+                            )
+                            self.testResolvesSameContent(citation_raw[1], zenodo_url)
                             test_status = True
                             self.maturity = max(self.getTestConfigMaturity(test_id), self.maturity)
                             self.setEvaluationCriteriumScore(test_id, test_score, "pass")
-                            self.score.earned += test_score
+                            self.score.earned += 1
+                            self.content_list.append(zenodo_url)
                         else:
-                            self.logger.warning(f"{self.metric_identifier} : Zenodo DOI in CITATION.cff is in wrong format.")
+                            self.logger.warning(
+                                f"{self.metric_identifier} : Zenodo DOI in CITATION.cff is in wrong format.")
 
         return test_status
 
@@ -224,28 +324,14 @@ class FAIREvaluatorDataIdentifierIncluded(FAIREvaluator):
         )
         self.output = IdentifierIncludedOutput()
 
+        # self.output.object_identifier_included = self.fuji.metadata_merged.get("object_identifier")
+
         contents = self.fuji.metadata_merged.get("object_content_identifier")
 
-        # if id_object is not None:
-        #   self.logger.info('FsF-F3-01M : Object identifier specified -: {}'.format(id_object))
         if contents:
-
             if isinstance(contents, dict):
                 contents = [contents]
-            # ignore empty?
             contents = [c for c in contents if c]
-            # keep unique only -
-            # contents = list({cv['url']:cv for cv in contents}.values())
-            # print(contents)
-            # number_of_contents = len(contents)
-            """if number_of_contents >= self.fuji.FILES_LIMIT:
-                self.logger.info(
-                    self.metric_identifier
-                    + " : The total number of object (content) identifiers specified is above threshold, will use the first -: {} content identifiers for the tests".format(
-                        self.fuji.FILES_LIMIT
-                    )
-                )
-                contents = contents[: self.fuji.FILES_LIMIT]"""
             self.result.test_status = "fail"
             if self.testDataSizeTypeNameAvailable(contents):
                 self.result.test_status = "pass"
@@ -254,22 +340,15 @@ class FAIREvaluatorDataIdentifierIncluded(FAIREvaluator):
         else:
             self.logger.warning('No contents available')
 
-        # if self.testResolvesSameContent():
-        #    self.result.test_status = "pass"
         if self.testZenodoDoiInReadme():
             self.result.test_status = "pass"
         if self.testZenodoDoiInCitationFile():
             self.result.test_status = "pass"
-
-        # if self.result.test_status == "pass":
-            # self.logger.log(
-            #     self.fuji.LOG_SUCCESS,
-            #     self.metric_identifier + f" : Number of object content identifier found -: {number_of_contents}",
-            # )
-        else:
-            self.logger.warning(self.metric_identifier + " : Valid data (content) identifier missing.")
+        if self.compareResolvedUrlIdentifiers():
+            self.result.test_status = "pass"
 
         self.result.metric_tests = self.metric_tests
+        self.output.object_identifier_included = self.fuji.landing_url
         self.output.object_content_identifier_included = self.content_list
         self.result.output = self.output
         self.result.maturity = self.maturity

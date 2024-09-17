@@ -186,7 +186,7 @@ metrics:
   metric_tests:
   - metric_test_identifier: FRSM-07-F3-1
     metric_test_name: Does the software include an identifier in the README or citation file?
-    metric_test_score: 1
+    metric_test_score: 2
     metric_test_maturity: 1
     metric_test_requirements:
       - target: https://f-uji.net/vocab/metadata/standards
@@ -197,13 +197,13 @@ metrics:
             - CITATION
   - metric_test_identifier: FRSM-07-F3-2
     metric_test_name: Does the identifier resolve to the same instance of the software?
-    metric_test_score: 1
+    metric_test_score: 2
     metric_test_maturity: 2
   created_by: FAIR4RS
   date_created: 2024-01-18
   date_updated: 2024-01-18
   version: 0.1
-  total_score: 2
+  total_score: 4
 - metric_identifier: FRSM-08-F4
   metric_number: 8
   metric_short_name: Persistent Metadata
