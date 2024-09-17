@@ -176,10 +176,18 @@ metrics:
     metric_test_name: The README file includes the DOI that represents all versions in Zenodo.
     metric_test_score: 1
     metric_test_maturity: 1
+    modality: any
+    required:
+      location:
+        - README
   - metric_test_identifier: FRSM-07-F3-CESSDA-2
     metric_test_name: The CITATION.cff file included in the root of the repository includes the appropriate DOI for the corresponding software release in Zenodo.
     metric_test_score: 1
     metric_test_maturity: 2
+    modality: any
+    required:
+      location:
+        - CITATION
   created_by: FAIR4RS
   date_created: 2024-01-18
   date_updated: 2024-01-18
