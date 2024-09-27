@@ -66,6 +66,9 @@ python -m fuji_server -c fuji_server/config/server.ini
 ```
 
 The OpenAPI user interface is then available at <http://localhost:1071/fuji/api/v1/ui/>.
+- Authentication:
+  - Username: `marvel`
+  - Password: `wonderwoman`
 
 ### Docker-based installation
 
