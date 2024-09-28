@@ -26,9 +26,10 @@ class FAIREvaluatorUniquePersistentIdentifierSoftware(FAIREvaluator):
 
         # Create map from metric test names to class functions. This is necessary as functions may be reused for different metrics relating to licenses.
         self.metric_test_map = {  # overall map
-            "testUniqueIdentifier": ["FRSM-01-F1-1"],
-            "testIdentifierScheme": ["FRSM-01-F1-2"],
-            "testSchemeCommonlyUsed": ["FRSM-01-F1-3"],
+            "testCodeMetaJSONAtRoot": ["FRSM-01-F1-1"],
+            "testUniqueIdentifier": ["FRSM-01-F1-2"],
+            "testIdentifierScheme": ["FRSM-01-F1-3"],
+            "testSchemeCommonlyUsed": ["FRSM-01-F1-4"],
             "testDOIInReadme": ["FRSM-01-F1-CESSDA-1"],
             "testReleasesSemanticVersioning": ["FRSM-01-F1-CESSDA-2"],
             "testReleasesDOI": ["FRSM-01-F1-CESSDA-3"],
@@ -138,6 +139,36 @@ class FAIREvaluatorUniquePersistentIdentifierSoftware(FAIREvaluator):
             self.logger.warning(f"{self.metric_identifier} : Test for DOIs of releases is not implemented.")
         return test_status
 
+    def testCodeMetaJSONAtRoot(self):
+        """The software has a CodeMeta file located at project root.
+
+        Returns:
+            bool: True if the test was defined and passed. False otherwise.
+        """
+        agnostic_test_name = "testCodeMetaJSONAtRoot"
+        test_status = False
+        test_defined = False
+        for test_id in self.metric_test_map[agnostic_test_name]:
+            if self.isTestDefined(test_id):
+                test_defined = True
+                break
+        if test_defined:
+            test_score = self.getTestConfigScore(test_id)
+            codemeta_files = self.fuji.github_data.get("CodeMeta", None)
+            if codemeta_files is not None and len(codemeta_files) > 0:
+                codemeta_file = codemeta_files[0]["path"]
+                test_status = True
+                self.maturity = max(self.getTestConfigMaturity(test_id), self.maturity)
+                self.setEvaluationCriteriumScore(test_id, test_score, "pass")
+                self.score.earned += test_score
+                self.logger.log(
+                    self.fuji.LOG_SUCCESS,
+                    f"{self.metric_identifier} : Found CodeMeta file {codemeta_file} at repository root ({test_id}).",
+                )
+            if not test_status:
+                self.logger.warning(f"{self.metric_identifier} : Did not find a CodeMeta file at repository root ({test_id}).")
+        return test_status
+
     def evaluate(self):
         if self.metric_identifier in self.metrics:
             self.result = UniquePersistentIdentifierSoftware(
@@ -145,6 +176,8 @@ class FAIREvaluatorUniquePersistentIdentifierSoftware(FAIREvaluator):
             )
             self.output = UniquePersistentIdentifierSoftwareOutput()
             self.result.test_status = "fail"
+            if self.testCodeMetaJSONAtRoot():
+                self.result.test_status = "pass"
             if self.testUniqueIdentifier():
                 self.result.test_status = "pass"
             if self.testIdentifierScheme():
