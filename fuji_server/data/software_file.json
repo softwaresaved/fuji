@@ -65,5 +65,14 @@
     "pattern": [
       "pom\\.xml"
     ]
+  },
+  "CodeMeta": {
+    "category": [
+      "documentation"
+    ],
+    "parse": "full",
+    "pattern": [
+      "codemeta\\.json"
+    ]
   }
 }
