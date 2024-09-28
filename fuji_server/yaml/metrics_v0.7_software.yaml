@@ -23,14 +23,18 @@ metrics:
   test_scoring_mechanism: cumulative
   metric_tests:
   - metric_test_identifier: FRSM-01-F1-1
-    metric_test_name: The software has a human and machine-readable unique identifier that is resolvable to a machine-readable landing page and follows a defined unique identifier syntax.
+    metric_test_name: The software has a CodeMeta file located at project root.
     metric_test_score: 1
     metric_test_maturity: 1
   - metric_test_identifier: FRSM-01-F1-2
+    metric_test_name: The software has a human and machine-readable unique identifier that is resolvable to a machine-readable landing page and follows a defined unique identifier syntax.
+    metric_test_score: 1
+    metric_test_maturity: 1
+  - metric_test_identifier: FRSM-01-F1-3
     metric_test_name: The identifier uses an identifier scheme that guarantees globally uniqueness and persistence.
     metric_test_score: 1
     metric_test_maturity: 2
-  - metric_test_identifier: FRSM-01-F1-3
+  - metric_test_identifier: FRSM-01-F1-4
     metric_test_name: The identifier scheme is commonly used in the domain.
     metric_test_score: 1
     metric_test_maturity: 3
